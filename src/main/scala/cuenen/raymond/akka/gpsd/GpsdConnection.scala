@@ -6,6 +6,10 @@ import akka.actor._
 import akka.dispatch.{UnboundedMessageQueueSemantics, RequiresMessageQueue}
 import akka.io.{IO, Tcp}
 import akka.util.ByteString
+import org.json4s._
+import org.json4s.ext.EnumSerializer
+import org.json4s.native.JsonMethods._
+import org.json4s.reflect.Reflector
 
 private[gpsd] class GpsdConnection(_gpsd: GpsdExt,
                                     commander: ActorRef,
@@ -16,6 +20,10 @@ private[gpsd] class GpsdConnection(_gpsd: GpsdExt,
   import Tcp._
   import context.system
 
+  implicit val formats = new DefaultFormats {
+    override def dateFormatter = DefaultFormats.losslessDate()
+  } + new EnumSerializer(NMEAMode)
+
   IO(Tcp) ! Tcp.Connect(remoteAddress = connect.remoteAddress.getOrElse(new InetSocketAddress(DefaultHostname, DefaultPort)),
                         localAddress = connect.localAddress,
                         options = connect.options,
@@ -23,32 +31,41 @@ private[gpsd] class GpsdConnection(_gpsd: GpsdExt,
                         pullMode = connect.pullMode)
 
   def receive = {
-    case _ @ CommandFailed(_: Tcp.Connect) =>
+    case connectFailed @ CommandFailed(_: Tcp.Connect) =>
       log.debug("connect failed")
-      commander ! _
+      commander ! connectFailed
       context stop self
 
-    case _: Connected =>
-      commander ! _
+    case connected: Connected =>
+      commander ! connected
       val connection = sender()
       connection ! Register(self)
       context become {
         case request: GpsdCommand =>
-          //TODO
-          connection ! Write(ByteString.empty)
-        case c @ CommandFailed(_: Write) =>
+          connection ! Write(ByteString(request.command))
+        case writeFailed @ CommandFailed(_: Write) =>
           // OS kernel buffer was full
           log.debug("write failed")
-          commander ! c
+          commander ! writeFailed
         case Received(data) =>
-          //TODO
-          commander ! data
+          data.utf8String.split("\n").foreach(commander ! extract(_))
         case Close =>
           connection ! Close
-        case _: ConnectionClosed =>
+        case connectionClosed: ConnectionClosed =>
           log.debug("connection closed")
-          commander ! _
+          commander ! connectionClosed
           context stop self
       }
+  }
+
+  def extract(data: String): GpsdObject = {
+    val json = parse(data)
+    (json \ "class").extractOpt[String] match {
+      case Some(classifier: String) => Sentences.get(classifier) match {
+        case Some(clazz) => Extraction.extract(json, Reflector.scalaTypeOf(Class.forName(clazz))).asInstanceOf[GpsdObject]
+        case None => Unknown(json)
+      }
+      case None => Unknown(json)
+    }
   }
 }

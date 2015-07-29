@@ -30,6 +30,7 @@ object Dependencies {
 
     val akkaActor    = "com.typesafe.akka" %% "akka-actor"    % akkaVersion
     val json4sNative = "org.json4s"        %% "json4s-native" % json4sVersion
+    val json4sExt    = "org.json4s"        %% "json4s-ext"    % json4sVersion
 
     object Test {
       val akkaTestKit = "com.typesafe.akka" %% "akka-testkit" % akkaVersion      % "test"
@@ -39,7 +40,7 @@ object Dependencies {
 
   import Compile._
 
-  val akkaGPSd = Seq(akkaActor, json4sNative, Test.akkaTestKit)
+  val akkaGPSd = Seq(akkaActor, json4sNative, json4sExt, Test.akkaTestKit)
 
 }
 
