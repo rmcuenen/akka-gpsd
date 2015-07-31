@@ -6,11 +6,18 @@ import akka.actor._
 import akka.dispatch.{UnboundedMessageQueueSemantics, RequiresMessageQueue}
 import akka.io.{IO, Tcp}
 import akka.util.ByteString
+import cuenen.raymond.akka.gpsd.Gpsd._
 import org.json4s._
 import org.json4s.ext.EnumSerializer
 import org.json4s.native.JsonMethods._
 import org.json4s.reflect.Reflector
 
+/**
+ * An actor handling the connection state machine for an outgoing connection
+ * to be established.
+ *
+ * INTERNAL API
+ */
 private[gpsd] class GpsdConnection(_gpsd: GpsdExt,
                                     commander: ActorRef,
                                    connect: Connect)
@@ -35,7 +42,6 @@ private[gpsd] class GpsdConnection(_gpsd: GpsdExt,
       log.debug("connect failed")
       commander ! connectFailed
       context stop self
-
     case connected: Connected =>
       commander ! connected
       val connection = sender()
